@@ -8,7 +8,7 @@ Think.image contains an abstract protocol for operating on rects of pixels; that
 out of an image into an array of data and writing an array of data into an image.  The library will convert formats appropriately
 and transparently so for instance if you have an alpha-masked RGBA image and you ask for a rect of single-byte data it will
 perform the alpha multiply *and* grayscale conversion for you.  A similar conversion will apply when writing pixel data
-back into the image.  So as a user you simple need to think in rects and formats and let the library perform whatever
+back into the image.  So as a user you simply need to think in rects and formats and let the library perform whatever
 conversions you need automatically.
 
 This protocol is defined in [protocols.clj](src/think/image/protocols.clj) while user-level access to it is defined
