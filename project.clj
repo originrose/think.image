@@ -1,6 +1,6 @@
 (defproject thinktopic/think.image "0.4.0-SNAPSHOT"
-  :description "FIXME: write description"
-  :url "http://example.com/FIXME"
+  :description "Image manipulation library"
+  :url "http://github.com/thinktopic/think.image"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
