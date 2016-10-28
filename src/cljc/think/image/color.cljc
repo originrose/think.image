@@ -218,4 +218,6 @@
 ;; "just noticable difference" for ciedist94
 (def ciedist94jnd 2.3)
 
-
+(defn rgbdist [[r1 g1 b1] [r2 g2 b2]]
+  ;; just the pythggorean distance.
+  (m/distance [r1 g1 b1] [r2 g2 b2]))
