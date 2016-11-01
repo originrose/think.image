@@ -1,4 +1,4 @@
-(defproject thinktopic/think.image "0.4.0-SNAPSHOT"
+(defproject thinktopic/think.image "0.4.0"
   :description "Image manipulation library"
   :url "http://github.com/thinktopic/think.image"
   :license {:name "Eclipse Public License"
@@ -7,9 +7,9 @@
                  [net.mikera/core.matrix "0.56.0"]
                  [net.mikera/imagez "0.11.0"]
                  [net.mikera/vectorz-clj "0.45.0"]]
- 
+
   :source-paths ["src/clj" "src/cljc"]
-  
+
   :java-source-paths ["java"]
   :profiles { :uberjar { :aot :all }
              :dev {:source-paths ["test/shared"
