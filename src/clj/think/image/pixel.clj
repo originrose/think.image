@@ -14,7 +14,7 @@
 (defonce g-shift (int 8))
 (defonce b-shift (int 0))
 
-(defn color-int-to-unpacked ^Integer [^Integer px ^Integer shift-amount]
+(defn color-int-to-unpacked ^long [^Integer px ^Integer shift-amount]
   (int (bit-and 0xFF (bit-shift-right px shift-amount))))
 
 (defn color-unpacked-to-int ^Integer [^Integer bt ^Integer shift-amount]
