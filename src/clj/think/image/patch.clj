@@ -55,11 +55,19 @@
 
 (defn is-rect-completely-within-mask?
   "Is this rect contained by the mask"
-  ([mask-img ^Rectangle rect byte-data]
+  ([mask-img ^Rectangle rect ^bytes byte-data]
    (image/->array mask-img rect byte-data)
-   (>= (double (/ (mat/esum (map pixel-byte->double byte-data))
-                  (* (.width rect) (.height rect))))
-       *content-threshold-cutoff*))
+   (let [num-bytes (alength byte-data)
+         byte-sum (loop [idx 0
+                         sum 0]
+                    (if (< idx num-bytes)
+                      (recur (inc idx)
+                             (+ sum (bit-and 0xFF (unchecked-int
+                                                   (aget byte-data idx)))))
+                      sum))]
+    (>= (double (/ byte-sum
+                   (* (.width rect) (.height rect) 255.0)))
+        *content-threshold-cutoff*)))
   ([mask-img ^Rectangle rect]
    (is-rect-completely-within-mask? mask-img rect (byte-array (* (.width rect) (.height rect))))))
 
