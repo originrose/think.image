@@ -2,11 +2,17 @@
   (:require [think.image.core]
             [think.image.image :as image]
             [mikera.image.core :as mi]
+            [mikera.image.protocols :as protos]
             [think.image.pixel :as pixel]
+            [think.image.image-util :as image-util]
             [clojure.core.matrix :as mat]
-            [clojure.core.matrix.macros :refer [c-for]])
+            [clojure.core.matrix.macros :refer [c-for]]
+            [think.datatype.core :as dtype]
+            [clojure.pprint :as pp])
   (:import [java.awt.image BufferedImage]
-           [java.awt Rectangle]))
+           [java.awt Rectangle]
+           [java.util Arrays]
+           [think.image ImageOperations]))
 
 
 (defn image->content-rect
@@ -69,87 +75,127 @@
                    (* (.width rect) (.height rect) 255.0)))
         *content-threshold-cutoff*)))
   ([mask-img ^Rectangle rect]
-   (is-rect-completely-within-mask? mask-img rect (byte-array (* (.width rect) (.height rect))))))
+   (is-rect-completely-within-mask? mask-img rect
+                                    (byte-array (* (.width rect)
+                                                   (.height rect))))))
 
 
-(defn generate-n-good-rects
-  [mask-image content-rect box-count patch-dim]
-  (->> (take 500 (repeatedly #(random-sub-rect content-rect patch-dim)))
-       (filter #(is-rect-completely-within-mask? mask-image %))
-       (take box-count)))
+(defn generate-n-filtered-rects
+  "Generate max-src-rect-count random sub-rects, filter by a given
+filter function.  Return rect-count of those."
+  [rect-filter-fn content-rect rect-count rect-dim
+   & {:keys [max-src-rect-count]
+      :or {max-src-rect-count 500}}]
+  (->> (take max-src-rect-count (repeatedly #(random-sub-rect content-rect rect-dim)))
+       (filter rect-filter-fn)
+       (take rect-count)))
 
 
-(defn create-patch
-  "Create a planar rgb core.matrix patch from a an image and bounding box."
-  [image ^Rectangle patch-rect]
-  (let [byte-pixels (byte-array (* 3 (.width patch-rect) (.height patch-rect)))]
-    (image/->array image patch-rect byte-pixels)
-    (-> (mat/array :vectorz (partition 3 (map pixel-byte->double byte-pixels)))
-        (mat/sub! 0.5)
-        (mat/transpose))))
 
-
-(defn patch->image
-  ^BufferedImage [patch patch-dim]
-  (let [patch (if (= 1 (count (mat/shape patch)))
-                (mat/reshape patch [3 (* patch-dim patch-dim)])
-                patch)
-        row-count 3
-        col-count (* patch-dim patch-dim)
-        img-height (long patch-dim)
-        ;;because they are square the transpose operation does not copy
-        ^doubles corrected-patch (-> patch
-                                     (mat/transpose)
-                                     (mat/add 0.5)
-                                     (mat/mul! 255.0)
-                                     (mat/to-double-array))
-        num-bytes (* row-count col-count)
-        num-pixels (quot num-bytes 3)
-        pixel-data (int-array num-pixels)
-        retval (mi/new-image patch-dim img-height false)]
-    (c-for [idx 0 (< idx num-pixels) (inc idx)]
-           (let [get-offset (* idx 3)]
-            (aset pixel-data idx (pixel/pack-pixel
-                                  (unchecked-int (aget corrected-patch get-offset))
-                                  (unchecked-int (aget corrected-patch (+ 1 get-offset)))
-                                  (unchecked-int (aget corrected-patch (+ 2 get-offset)))
-                                  255))))
-    (mi/set-pixels retval pixel-data)
-    retval))
+(defmacro image->patch-impl
+  [retval-r retval-g retval-b data-array num-pixels cast-fn]
+  `(c-for
+    [idx# 0 (< idx# ~num-pixels) (inc idx#)]
+    (pixel/with-unpacked-pixel (aget ~data-array idx#)
+      (aset ~retval-r idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
+      (aset ~retval-g idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
+      (aset ~retval-b idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5))))))
 
 
 (defn image->patch
+  ([^BufferedImage img ^Rectangle rect datatype ^ints data-array]
+   (image/->array img rect data-array)
+   (let [retval-num-pixels (*(.width rect) (.height rect))]
+    (condp = datatype
+      :double
+      (let [retval-r (double-array retval-num-pixels)
+            retval-g (double-array retval-num-pixels)
+            retval-b (double-array retval-num-pixels)]
+        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels double)
+        [retval-r retval-g retval-b])
+      :float
+      (let [retval-r (float-array retval-num-pixels)
+            retval-g (float-array retval-num-pixels)
+            retval-b (float-array retval-num-pixels)]
+        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels float)
+        [retval-r retval-g retval-b]))))
+  ([img ^Rectangle rect datatype]
+   (image->patch img rect datatype(int-array (* (.width rect)
+                                                (.height rect)))))
+  ([img ^Rectangle rect]
+   (image->patch img rect :double))
+  ([^BufferedImage img]
+   (image->patch img (image-util/image->rect img))))
+
+
+(defn patch->image
+  ^BufferedImage [data ^long img-width]
+  (let [[n-rows n-cols] (mat/shape data)
+        img-height (quot (long n-cols) img-width)
+        retval (image/new-image image/*default-image-impl* img-width img-height :rgb)
+        byte-data (byte-array (mat/ecount data))
+        n-pixels (long n-cols)
+        [r-data g-data b-data] data]
+    (assert (= 3 n-rows))
+    (c-for [idx 0 (< idx n-pixels) (inc idx)]
+           (aset byte-data (+ (* idx 3) 0)
+                 (unchecked-byte (* 255.0 (+ (double (dtype/get-value r-data idx)) 0.5))))
+           (aset byte-data (+ (* idx 3) 1)
+                 (unchecked-byte (* 255.0 (+ (double (dtype/get-value g-data idx)) 0.5))))
+           (aset byte-data (+ (* idx 3) 2)
+                 (unchecked-byte (* 255.0 (+ (double (dtype/get-value b-data idx)) 0.5)))))
+    (image/array-> retval byte-data)
+    retval))
+
+
+
+(defn masked-image->patches
+  ([img mask-img patch-count patch-dim content-rect datatype]
+   (let [patch-rects (vec
+                      (generate-n-filtered-rects
+                       (partial is-rect-completely-within-mask? mask-img)
+                       content-rect
+                       patch-count patch-dim))
+         patch-data-array (int-array (* (long patch-dim) (long patch-dim)))]
+     (mapv #(image->patch img % datatype patch-data-array) patch-rects))))
+
+
+
+(defn buffered-image-has-alpha-channel?
+  "Return true of this image has alpha channel"
   [^BufferedImage img]
-  (let [^ints pixels (mi/get-pixels img)
-        num-pixels (alength pixels)
-        ^doubles r-data (double-array num-pixels)
-        ^doubles g-data (double-array num-pixels)
-        ^doubles b-data (double-array num-pixels)]
-    (c-for [pixel 0 (< pixel num-pixels) (inc pixel)]
-           (pixel/with-unpacked-pixel (aget pixels pixel)
-             (aset r-data pixel (double r))
-             (aset g-data pixel (double g))
-             (aset b-data pixel (double b))))
-    (-> (mat/array :vectorz [r-data g-data b-data])
-        (mat/div! 255.0)
-        (mat/sub! 0.5))))
+  (let [buf-img-type (.getType img)]
+    (condp = buf-img-type
+      BufferedImage/TYPE_INT_ARGB true
+      BufferedImage/TYPE_4BYTE_ABGR true
+      false)))
 
 
-(defn image->patches
-  ([img mask-op patch-count patch-dim]
-   (let [mask-img (mask-op img)
-         content-rect (image/gray-image->bounding-rect mask-img)
-         patch-rects (generate-n-good-rects mask-img content-rect patch-count patch-dim)]
-     (mapv #(create-patch img %) patch-rects)))
-  ([img patch-count patch-dim]
-   (image->patches img image->edge-content-mask patch-count patch-dim)))
-
-
-(defn generate-patches-per-scale
-  ([img mask-op patch-dim scale num-patches]
-   (-> (if (= 1.0 scale)
-         img
-         (image/resize img (double-to-long (* (image/width img) scale))))
-       (image->patches mask-op num-patches patch-dim)))
-  ([img patch-dim scale num-patches]
-   (generate-patches-per-scale img image->edge-content-mask patch-dim scale num-patches)))
+(defn image-src->patches
+  ([img-src patches-per-image patch-dim datatype]
+   (try
+     (let [img (protos/as-image img-src)
+           has-transparency? (buffered-image-has-alpha-channel? img)
+           img (mi/ensure-default-image-type img)
+           width (image/width img)
+           height (image/height img)
+           mask (byte-array (* width height))]
+       (if-not has-transparency?
+         (Arrays/fill mask (unchecked-byte -1))
+         (let [^ints data (image/->array img)
+               data-len (alength data)]
+           (c-for
+            [idx 0 (< idx data-len) (inc idx)]
+            (aset mask idx
+                  (unchecked-byte (pixel/color-int-to-unpacked
+                                   (aget data idx) pixel/a-shift))))))
+       (let [content-rect (if-not has-transparency?
+                            (image-util/image->rect img)
+                            (ImageOperations/byteMaskToRectangle mask width height))
+             mask-image (image/array-> (image/new-image img width height :gray) mask)]
+         (masked-image->patches img mask-image patches-per-image
+                                patch-dim content-rect datatype)))
+     (catch Throwable e
+       (println "Failed to process image" img-src)
+       (clojure.pprint/pprint e)
+       []))))
