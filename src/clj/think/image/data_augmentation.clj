@@ -117,6 +117,7 @@
     (imagez/set-pixels out-image pixels)
     out-image))
 
+;; From BenB
 (defn- rotate-img-emb-impl [img r x y]
   (let [w (.getWidth img)
         h (.getHeight img)
