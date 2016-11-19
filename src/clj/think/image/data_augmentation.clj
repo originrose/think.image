@@ -11,7 +11,12 @@
     [java.awt.geom AffineTransform]))
 
 
+(set! *warn-on-reflection* true)
+(set! *unchecked-math* true)
+
+
 (defn- generate-random-int-pixel
+  ^long
   []
   (think-pixel/pack-pixel (rand-int 255) (rand-int 255) (rand-int 255) 255))
 
@@ -107,7 +112,7 @@
   [^BufferedImage img noise-ratio]
   (let [width (.getWidth img)
         height (.getHeight img)
-        ^int pixels (imagez/get-pixels img)
+        ^ints pixels (imagez/get-pixels img)
         num-pixels (alength pixels)
         num-noisy-pixels (* noise-ratio num-pixels)
         locations-to-edit (take num-noisy-pixels (shuffle (range num-pixels)))
@@ -118,7 +123,7 @@
     out-image))
 
 ;; From BenB
-(defn- rotate-img-emb-impl [img r x y]
+(defn- rotate-img-emb-impl [^BufferedImage img r x y]
   (let [w (.getWidth img)
         h (.getHeight img)
         at (new java.awt.geom.AffineTransform)
@@ -147,14 +152,14 @@
 (defn rotate-img-embiggen
   "rotate the image by a given angle, increasing the size of the result
   image to ensure that it is fully contained."
-  ([img r] (rotate-img-emb-impl img r (* 0.5 (.getWidth img)) (* 0.5 (.getHeight img))))
+  ([^BufferedImage img r] (rotate-img-emb-impl img r (* 0.5 (.getWidth img)) (* 0.5 (.getHeight img))))
   ([img r x y] (rotate-img-emb-impl img r x y)))
 
-(defn make-noise-image [img]
+(defn make-noise-image [^BufferedImage img]
   (let [height (.getHeight img)
         width (.getWidth img)
         new-img (imagez/new-image width height)
-        pxls (imagez/get-pixels img)]
+        ^ints pxls (imagez/get-pixels img)]
     (dotimes [i (* width height)]
       (aset pxls i (generate-random-int-pixel)))
     (imagez/set-pixels new-img pxls)
