@@ -50,7 +50,8 @@
         (int-array num-pixels))))
   (array-matches-image? [img ^Rectangle rect array-data]
     (if (= (.getType img) BufferedImage/TYPE_BYTE_GRAY)
-      (= :gray (util/byte-array->image-type array-data rect))
+      (and (instance? (Class/forName "[B") array-data)
+           (= :gray (util/byte-array->image-type array-data rect)))
       (instance? (Class/forName "[I") array-data)))
   ;;We expect the layers above this to make sure dest-array matches exactly
   ;;the type of the image.
