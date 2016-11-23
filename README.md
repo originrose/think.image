@@ -1,4 +1,4 @@
-'''# think.image ![TravisCI](https://api.travis-ci.org/thinktopic/think.image.svg?branch=master) ```
+# think.image ![TravisCI](https://api.travis-ci.org/thinktopic/think.image.svg?branch=master) 
 
 Various algorithms and utilities for dealing with images.
 
