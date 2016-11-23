@@ -45,8 +45,8 @@
   [^Rectangle outer-rect ^long output-dim]
   (let [left-rand (double (rand))
         top-rand (double (rand))
-        output-left (double-to-long (* (- (.width outer-rect) output-dim) left-rand))
-        output-top (double-to-long (* (- (.height outer-rect) output-dim) top-rand))]
+        output-left (double-to-long (+ (.x outer-rect) (* (- (.width outer-rect) output-dim) left-rand)))
+        output-top (double-to-long (+ (.y outer-rect) (* (- (.height outer-rect) output-dim) top-rand)))]
     (Rectangle. output-left output-top output-dim output-dim)))
 
 
@@ -71,9 +71,9 @@
                              (+ sum (bit-and 0xFF (unchecked-int
                                                    (aget byte-data idx)))))
                       sum))]
-    (>= (double (/ byte-sum
-                   (* (.width rect) (.height rect) 255.0)))
-        *content-threshold-cutoff*)))
+     (>= (double (/ byte-sum
+                    (* (.width rect) (.height rect) 255.0)))
+         *content-threshold-cutoff*)))
   ([mask-img ^Rectangle rect]
    (is-rect-completely-within-mask? mask-img rect
                                     (byte-array (* (.width rect)
@@ -150,14 +150,20 @@ filter function.  Return rect-count of those."
 
 
 (defn masked-image->patches
-  ([img mask-img patch-count patch-dim content-rect datatype]
+  ([img mask-img patch-count patch-dim content-rect datatype
+    & {:keys [image-augmentation-fn]}]
    (let [patch-rects (vec
                       (generate-n-filtered-rects
                        (partial is-rect-completely-within-mask? mask-img)
                        content-rect
                        patch-count patch-dim))
-         patch-data-array (int-array (* (long patch-dim) (long patch-dim)))]
-     (mapv #(image->patch img % datatype patch-data-array) patch-rects))))
+         patch-data-array (int-array (* (long patch-dim) (long patch-dim)))
+         image-augmentation-fn (or image-augmentation-fn identity)]
+     (mapv (fn [rect]
+             (let [aug-image (-> (image/sub-image img rect)
+                                 image-augmentation-fn)]
+               (image->patch aug-image (image-util/image->rect aug-image) datatype patch-data-array)))
+           patch-rects))))
 
 
 
@@ -170,32 +176,43 @@ filter function.  Return rect-count of those."
       BufferedImage/TYPE_4BYTE_ABGR true
       false)))
 
+(defn image->patches
+  "If an image has an alpha channel, then we assume it has a mask.  Else we assume
+it is safe to create patches out of the entire image."
+  [img patches-per-image patch-dim datatype & {:keys [image-augmentation-fn]}]
+  (try
+    (let [has-transparency? (buffered-image-has-alpha-channel? img)
+          img (mi/ensure-default-image-type img)
+          width (image/width img)
+          height (image/height img)
+          mask (byte-array (* width height))]
+      (if-not has-transparency?
+        (Arrays/fill mask (unchecked-byte -1))
+        (let [^ints data (image/->array img)
+              data-len (alength data)]
+          (c-for
+           [idx 0 (< idx data-len) (inc idx)]
+           (aset mask idx
+                 (unchecked-byte (pixel/color-int-to-unpacked
+                                  (aget data idx) pixel/a-shift))))))
+      (let [content-rect (if-not has-transparency?
+                           (image-util/image->rect img)
+                           (ImageOperations/byteMaskToRectangle mask width height))
+            mask-image (image/array-> (image/new-image img width height :gray) mask)]
+
+        (masked-image->patches img mask-image patches-per-image
+                               patch-dim content-rect datatype
+                               :image-augmentation-fn image-augmentation-fn)
+        ))
+
+    (catch Throwable e
+      (println "Failed to process image" img)
+      (clojure.pprint/pprint e)
+      [])))
+
 
 (defn image-src->patches
-  ([img-src patches-per-image patch-dim datatype]
-   (try
-     (let [img (protos/as-image img-src)
-           has-transparency? (buffered-image-has-alpha-channel? img)
-           img (mi/ensure-default-image-type img)
-           width (image/width img)
-           height (image/height img)
-           mask (byte-array (* width height))]
-       (if-not has-transparency?
-         (Arrays/fill mask (unchecked-byte -1))
-         (let [^ints data (image/->array img)
-               data-len (alength data)]
-           (c-for
-            [idx 0 (< idx data-len) (inc idx)]
-            (aset mask idx
-                  (unchecked-byte (pixel/color-int-to-unpacked
-                                   (aget data idx) pixel/a-shift))))))
-       (let [content-rect (if-not has-transparency?
-                            (image-util/image->rect img)
-                            (ImageOperations/byteMaskToRectangle mask width height))
-             mask-image (image/array-> (image/new-image img width height :gray) mask)]
-         (masked-image->patches img mask-image patches-per-image
-                                patch-dim content-rect datatype)))
-     (catch Throwable e
-       (println "Failed to process image" img-src)
-       (clojure.pprint/pprint e)
-       []))))
+  "Given a filename produce a set of random rgb patches of a given datatype potentially
+augmented."
+  [img-src patches-per-image patch-dim datatype & {:keys [image-augmentation-fn]}]
+  (image->patches (protos/as-image img-src) patches-per-image patch-dim datatype :image-augmentation-fn image-augmentation-fn))

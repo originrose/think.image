@@ -1,4 +1,5 @@
 # think.image ![TravisCI](https://api.travis-ci.org/thinktopic/think.image.svg?branch=master) 
+[![Clojars Project](https://clojars.org/thinktopic/think.image/latest-version.svg)](https://clojars.org/thinktopic/think.image)
 
 Various algorithms and utilities for dealing with images.
 
