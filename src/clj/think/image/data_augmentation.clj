@@ -164,3 +164,28 @@
       (aset pxls i (generate-random-int-pixel)))
     (imagez/set-pixels new-img pxls)
     new-img))
+
+(defn- get-shifted-image
+  [^BufferedImage img fetch-locations write-locations]
+  (let [out-image (imagez/new-image (.getWidth img) (.getHeight img))
+        [x1 y1 width1 height1] fetch-locations
+        [x2 y2 width2 height2] write-locations
+        shifted-pixels (.getDataElements (.getRaster img) x1 y1 width1 height1 nil)]
+    (.setDataElements (.getRaster out-image) x2 y2 width2 height2 shifted-pixels)
+    out-image))
+
+(defn shift
+  "Shifts the image by a given amount. Returns a vector of 2 images for each shift direction pair (left/right or top/bottom) based on the direction (:horizontal or :vertical)"
+  [^BufferedImage img shift direction & {:keys [random?]
+                               :or {random? false}}]
+  (let [width (.getWidth img)
+        height (.getHeight img)
+        shift (if random? (rand-int shift) shift)]
+    (cond
+      (= direction :horizontal)
+      [(get-shifted-image img [shift 0 (- width shift) height] [0 0 (- width shift) height])
+       (get-shifted-image img [0 0 (- width shift) height] [shift 0 (- width shift) height])]
+      (= direction :vertical)
+      [(get-shifted-image img [0 shift width (- height shift)] [0 0 width (- height shift)])
+       (get-shifted-image img [0 0 width (- height shift)] [0 shift width (- height shift)])]
+      )))
