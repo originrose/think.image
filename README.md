@@ -18,9 +18,27 @@ in [image.clj](src/think/image/image.clj).  In order to use this protocol with b
           [think.image.image :as img]) ;;access to user level functionality.
 ```
 
+
+
 Examples of using this protocol are in some various other pieces of code, namely [patch.clj](src/think/image/patch.clj).
 
 There is a generic java implementation for the data conversion.
+
+## Examples
+
+```clojure
+(ns color-test
+  (:require [think.image.color :as cl]) )
+
+(defn show-color-distances []
+  (let [rgb-color1 [127 126 126]
+        rgb-color2 [76 77 77]
+        lab-color1 (cl/rgb->lab rgb-color1)
+        lab-color2 (cl/rgb->lab rgb-color2)]
+    (println "rgb color distance: " (cl/ciedist94 rgb-color1 rgb-color2))
+    (println "cie76 color distance: " (cl/ciedist76 lab-color1 lab-color2))
+    (println "cie94 color distance: " (cl/ciedist94 lab-color1 lab-color2))))
+```
 
 ## License
 
