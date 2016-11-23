@@ -1,4 +1,5 @@
 # think.image
+[![Clojars Project](https://clojars.org/thinktopic/think.image/latest-version.svg)](https://clojars.org/thinktopic/think.image)
 
 Various algorithms and utilities for dealing with images.
 
