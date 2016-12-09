@@ -9,6 +9,8 @@
 
   :source-paths ["src/clj" "src/cljc"]
 
+  :plugins [[lein-codox "0.10.2"]]
+
   :java-source-paths ["java"]
   :profiles { :uberjar { :aot :all }
              :dev {:source-paths ["test/shared"
