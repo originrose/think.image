@@ -41,7 +41,7 @@
   [^BufferedImage img degrees random?]
   (let [width (.getWidth img)
         height (.getHeight img)
-        degrees (if random? (rand-int 360) degrees)
+        degrees (if random? (rand-int degrees) degrees)
         out-image (imagez/new-image width height)
         tx (AffineTransform.)
         radians (Math/toRadians degrees)
