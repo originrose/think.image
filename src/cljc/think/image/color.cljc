@@ -1,8 +1,11 @@
 (ns think.image.color
-  (:require [clojure.core.matrix :as m]))
+  (:require [clojure.core.matrix :as m]
+            #?(:cljs [goog.string :refer [format]])
+            #?(:clj  [clojure.edn :as edn]
+               :cljs [cljs.reader :as edn])))
 
 ;; -------------------------------------------------------------------------------------------
-;; make a random RGb color 
+;; make a random RGB color 
 ;; -------------------------------------------------------------------------------------------
 
 (defn random-color [] 
