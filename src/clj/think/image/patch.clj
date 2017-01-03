@@ -103,29 +103,29 @@ filter function.  Return rect-count of those."
 
 
 (defn image->patch
-  ([^BufferedImage img ^Rectangle rect datatype ^ints data-array]
-   (image/->array img rect data-array)
-   (let [retval-num-pixels (*(.width rect) (.height rect))]
-    (condp = datatype
-      :double
-      (let [retval-r (double-array retval-num-pixels)
-            retval-g (double-array retval-num-pixels)
-            retval-b (double-array retval-num-pixels)]
-        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels double)
+  "Turns BufferedImage img into an array suitable for cortex input."
+  [^BufferedImage img & {:keys [rect datatype colorspace data-array]}]
+  (let [rect (or rect (image-util/image->rect img))
+        datatype (or datatype :double)
+        colorspace (or colorspace :rgb)
+        retval-num-pixels (* (.width rect) (.height rect))
+        data-array (or data-array (int-array retval-num-pixels))
+        array-constructor (condp = datatype :double double-array :float float-array)
+        cast-fn (condp = datatype :double double :float float)]
+    (image/->array img rect data-array)
+    (condp = colorspace
+      :rgb
+      (let [retval-r (array-constructor retval-num-pixels)
+            retval-g (array-constructor retval-num-pixels)
+            retval-b (array-constructor retval-num-pixels)]
+        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels cast-fn)
         [retval-r retval-g retval-b])
-      :float
-      (let [retval-r (float-array retval-num-pixels)
-            retval-g (float-array retval-num-pixels)
-            retval-b (float-array retval-num-pixels)]
-        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels float)
-        [retval-r retval-g retval-b]))))
-  ([img ^Rectangle rect datatype]
-   (image->patch img rect datatype(int-array (* (.width rect)
-                                                (.height rect)))))
-  ([img ^Rectangle rect]
-   (image->patch img rect :double))
-  ([^BufferedImage img]
-   (image->patch img (image-util/image->rect img))))
+      :grayscale
+      (let [retval-r (array-constructor retval-num-pixels)
+            retval-g (array-constructor retval-num-pixels)
+            retval-b (array-constructor retval-num-pixels)]
+        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels cast-fn)
+        [retval-r]))))
 
 
 (defn patch->image
@@ -135,8 +135,10 @@ filter function.  Return rect-count of those."
         retval (image/new-image image/*default-image-impl* img-width img-height :rgb)
         byte-data (byte-array (mat/ecount data))
         n-pixels (long n-cols)
-        [r-data g-data b-data] data]
-    (assert (= 3 n-rows))
+        r-data (if (= 1 n-rows) (first data) (nth data 0))
+        g-data (if (= 1 n-rows) (first data) (nth data 1))
+        b-data (if (= 1 n-rows) (first data) (nth data 2))]
+    (assert (#{1 3} n-rows))
     (c-for [idx 0 (< idx n-pixels) (inc idx)]
            (aset byte-data (+ (* idx 3) 0)
                  (unchecked-byte (* 255.0 (+ (double (dtype/get-value r-data idx)) 0.5))))
@@ -150,21 +152,20 @@ filter function.  Return rect-count of those."
 
 
 (defn masked-image->patches
-  ([img mask-img patch-count patch-dim content-rect datatype
-    & {:keys [image-augmentation-fn]}]
-   (let [patch-rects (vec
-                      (generate-n-filtered-rects
-                       (partial is-rect-completely-within-mask? mask-img)
-                       content-rect
-                       patch-count patch-dim))
-         patch-data-array (int-array (* (long patch-dim) (long patch-dim)))
-         image-augmentation-fn (or image-augmentation-fn identity)]
-     (mapv (fn [rect]
-             (let [aug-image (-> (image/sub-image img rect)
-                                 image-augmentation-fn)]
-               (image->patch aug-image (image-util/image->rect aug-image) datatype patch-data-array)))
-           patch-rects))))
-
+  [img mask-img patch-count patch-dim content-rect datatype
+   & {:keys [image-augmentation-fn]}]
+  (let [patch-rects (vec
+                     (generate-n-filtered-rects
+                      (partial is-rect-completely-within-mask? mask-img)
+                      content-rect
+                      patch-count patch-dim))
+        patch-data-array (int-array (* (long patch-dim) (long patch-dim)))
+        image-augmentation-fn (or image-augmentation-fn identity)]
+    (mapv (fn [rect]
+            (let [aug-image (-> (image/sub-image img rect)
+                                image-augmentation-fn)]
+              (image->patch aug-image :data-array patch-data-array)))
+          patch-rects)))
 
 
 (defn buffered-image-has-alpha-channel?
