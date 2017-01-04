@@ -1,5 +1,40 @@
 (ns think.image.color
-  (:require [clojure.core.matrix :as m]))
+  (:require [clojure.core.matrix :as m]
+            #?(:cljs [goog.string :refer [format]])
+            #?(:clj  [clojure.edn :as edn]
+               :cljs [cljs.reader :as edn])))
+
+;; -------------------------------------------------------------------------------------------
+;; make a random RGB color 
+;; -------------------------------------------------------------------------------------------
+
+(defn random-color [] 
+  #?(:clj (format "%06x" (rand-int 16rFFFFFF))
+     :cljs 
+        (let [r (rand-int 16rFFFFFF)
+              ret (.toString r 16)
+              pad (- 6 (.-length ret))]
+          (str (apply str (repeat pad "0")) ret))))
+
+;; -------------------------------------------------------------------------------------------
+;; color format conversions 
+;; -------------------------------------------------------------------------------------------
+
+(defn rgb->int [[r g b]]
+  (bit-or (bit-shift-left (int r) 16) (bit-shift-left (int g) 8) (int b)))
+
+(defn hex-string-to-rgb [hs]
+  (let [red   (edn/read-string (str "0x" (apply str (take 2 hs)))) 
+        green (edn/read-string (str "0x" (apply str (take 2 (drop 2 hs)))))
+        blue  (edn/read-string (str "0x" (apply str (take 2 (drop 4 hs)))))]
+    [red green blue]))   
+
+(defn rgb-to-hex-string [[r g b]]
+  #?(:clj (format "%06x" (rgb->int [r g b]))
+     :cljs (let [twopad (fn [s] (let [pad (- 2 (.-length s))]
+                               (str (apply str (repeat pad "0")) s)))] 
+          (str (twopad (.toString r 16)) (twopad (.toString g 16)) (twopad (.toString b 16))))))
+
 
 (defn rgb->hsv [[r g b]]
   (let [r (/ r 255.0)
@@ -182,6 +217,9 @@
       lab->xyz
       xyz->rgb))
 
+;; -------------------------------------------------------------------------------------------
+;; color distance algorithms
+;; -------------------------------------------------------------------------------------------
 
 ;; cie 76 color distance.  colors should be LAB format.
 (defn ciedist76 [[l1 a1 b1] [l2 a2 b2]]
