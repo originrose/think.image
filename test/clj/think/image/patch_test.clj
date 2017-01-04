@@ -8,7 +8,8 @@
             [think.image.image :as image]
             [think.image.pixel :as pixel]
             [think.image.image-util :as iu]
-            [clojure.core.matrix.macros :refer [c-for]])
+            [clojure.core.matrix.macros :refer [c-for]]
+            [clojure.core.matrix :as m])
   (:import [java.awt.image BufferedImage]
            [java.awt Rectangle]))
 
@@ -62,3 +63,19 @@
                              0.0
                              (seq int-data))]
            (is (= 255 (long (Math/round (double (/ r-sum num-pixels))))))))))))
+
+
+
+(deftest patches-colorspace
+  (let [test-img (circular-image)
+        obs-1 (p/image->patch test-img :colorspace :gray)
+        obs-2 (p/image->patch test-img :colorspace :rgb)
+        img-width (image/width test-img)]
+    (is (= 1 (first (m/shape obs-1))))
+    (is (= 3 (first (m/shape obs-2))))
+    (let [img-1 (p/patch->image obs-1 img-width)
+          img-2 (p/patch->image obs-2 img-width)]
+      (is (= (image/height img-1)
+             (image/height img-2)))
+      ;;If nothing got thrown we are probably good.
+      )))

@@ -123,27 +123,30 @@ filter function.  Return rect-count of those."
                  :float (image->patch-impl data-array retval-num-pixels float float-array))]
     (condp = colorspace
       :rgb retval
-      :grayscale [(first retval)])))
+      :gray [(first retval)])))
 
 
 (defn patch->image
   ^BufferedImage [data ^long img-width]
   (let [[n-rows n-cols] (mat/shape data)
+        n-rows (long n-rows)
         img-height (quot (long n-cols) img-width)
         retval (image/new-image image/*default-image-impl* img-width img-height :rgb)
         byte-data (byte-array (mat/ecount data))
         n-pixels (long n-cols)
-        r-data (if (= 1 n-rows) (first data) (nth data 0))
-        g-data (if (= 1 n-rows) (first data) (nth data 1))
-        b-data (if (= 1 n-rows) (first data) (nth data 2))]
+        r-data (first data)
+        [g-data b-data] (if-not (= 1 n-rows)
+                          [(nth data 1) (nth data 2)]
+                          [nil nil])]
     (assert (#{1 3} n-rows))
     (c-for [idx 0 (< idx n-pixels) (inc idx)]
-           (aset byte-data (+ (* idx 3) 0)
+           (aset byte-data (+ (* idx n-rows) 0)
                  (unchecked-byte (* 255.0 (+ (double (dtype/get-value r-data idx)) 0.5))))
-           (aset byte-data (+ (* idx 3) 1)
-                 (unchecked-byte (* 255.0 (+ (double (dtype/get-value g-data idx)) 0.5))))
-           (aset byte-data (+ (* idx 3) 2)
-                 (unchecked-byte (* 255.0 (+ (double (dtype/get-value b-data idx)) 0.5)))))
+           (when (= 3 n-rows)
+             (aset byte-data (+ (* idx n-rows) 1)
+                   (unchecked-byte (* 255.0 (+ (double (dtype/get-value g-data idx)) 0.5))))
+             (aset byte-data (+ (* idx n-rows) 2)
+                   (unchecked-byte (* 255.0 (+ (double (dtype/get-value b-data idx)) 0.5))))))
     (image/array-> retval byte-data)
     retval))
 
