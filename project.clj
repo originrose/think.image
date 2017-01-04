@@ -1,4 +1,4 @@
-(defproject thinktopic/think.image "0.4.3-SNAPSHOT"
+(defproject thinktopic/think.image "0.4.3"
   :description "Image manipulation library"
   :url "http://github.com/thinktopic/think.image"
   :license {:name "Eclipse Public License"
@@ -18,4 +18,3 @@
              :test {:source-paths ["test/shared"
                                    "test/clj"] }}
   :think/meta {:type :library :tags [:image :clj :cljc]})
-
