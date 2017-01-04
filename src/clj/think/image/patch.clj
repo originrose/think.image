@@ -15,6 +15,10 @@
            [think.image ImageOperations]))
 
 
+(set! *warn-on-reflection* true)
+(set! *unchecked-math* true)
+
+
 (defn image->content-rect
   [img]
   (-> (image/ensure-buffered-image img)
@@ -93,39 +97,33 @@ filter function.  Return rect-count of those."
 
 
 (defmacro image->patch-impl
-  [retval-r retval-g retval-b data-array num-pixels cast-fn]
-  `(c-for
-    [idx# 0 (< idx# ~num-pixels) (inc idx#)]
-    (pixel/with-unpacked-pixel (aget ~data-array idx#)
-      (aset ~retval-r idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
-      (aset ~retval-g idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
-      (aset ~retval-b idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5))))))
+  [data-array num-pixels cast-fn array-fn]
+  `(let [retval-r# (~array-fn ~num-pixels)
+         retval-g# (~array-fn ~num-pixels)
+         retval-b# (~array-fn ~num-pixels)]
+     (c-for
+      [idx# 0 (< idx# ~num-pixels) (inc idx#)]
+      (pixel/with-unpacked-pixel (aget ~data-array idx#)
+        (aset retval-r# idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
+        (aset retval-g# idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
+        (aset retval-b# idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5)))))
+     [retval-r# retval-g# retval-b#]))
 
 
 (defn image->patch
   "Turns BufferedImage img into an array suitable for cortex input."
-  [^BufferedImage img & {:keys [rect datatype colorspace data-array]}]
-  (let [rect (or rect (image-util/image->rect img))
-        datatype (or datatype :double)
-        colorspace (or colorspace :rgb)
+  [^BufferedImage img & {:keys [rect datatype colorspace data-array]
+                         :or {datatype :double colorspace :rgb}}]
+  (let [^Rectangle rect (or rect (image-util/image->rect img))
         retval-num-pixels (* (.width rect) (.height rect))
-        data-array (or data-array (int-array retval-num-pixels))
-        array-constructor (condp = datatype :double double-array :float float-array)
-        cast-fn (condp = datatype :double double :float float)]
-    (image/->array img rect data-array)
+        ^ints data-array (or data-array (int-array retval-num-pixels))
+        _ (image/->array img rect data-array)
+        retval (condp = datatype
+                 :double (image->patch-impl data-array retval-num-pixels double double-array)
+                 :float (image->patch-impl data-array retval-num-pixels float float-array))]
     (condp = colorspace
-      :rgb
-      (let [retval-r (array-constructor retval-num-pixels)
-            retval-g (array-constructor retval-num-pixels)
-            retval-b (array-constructor retval-num-pixels)]
-        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels cast-fn)
-        [retval-r retval-g retval-b])
-      :grayscale
-      (let [retval-r (array-constructor retval-num-pixels)
-            retval-g (array-constructor retval-num-pixels)
-            retval-b (array-constructor retval-num-pixels)]
-        (image->patch-impl retval-r retval-g retval-b data-array retval-num-pixels cast-fn)
-        [retval-r]))))
+      :rgb retval
+      :grayscale [(first retval)])))
 
 
 (defn patch->image
