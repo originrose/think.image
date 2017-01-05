@@ -1,4 +1,4 @@
-7(ns think.image.image-impl
+(ns think.image.image-impl
   (:require [think.image.protocols :as ip]
             [mikera.image.core :as imagez]
             [think.image.pixel :as pixel]
