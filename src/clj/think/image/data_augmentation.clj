@@ -368,7 +368,6 @@
   rect-tx parameters, with width and height as in :target-dims.
   optional is the affinetransform interpolation type.  Use TYPE_NEAREST_NEIGHBOR 
   for masks, where you don't want interpolated colors."
-  
   (^BufferedImage [^BufferedImage img 
                   {:keys [target-dims] :as tx}
                   ato]   ; AffineTransformOp/TYPE_BICUBIC, TYPE_BILINEAR, or TYPE_NEAREST_NEIGHBOR
@@ -489,6 +488,8 @@
 
 
 (defn replay-rtx-w-mask [image-dir mask-dir mask-color->category-index rect-tx]
+  "rebuild a training image and mask, given a rect-tx and the appropriate 
+  image directories (and a color->index function)"
   (let [{:keys [source-filename
                 source-dims 
                 target-dims 
