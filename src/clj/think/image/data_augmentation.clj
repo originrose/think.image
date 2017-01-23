@@ -1,6 +1,7 @@
 (ns think.image.data-augmentation
   (:require
     [mikera.image.core :as i]
+    [mikera.image.colours :as c]
     [clojure.core.matrix.macros :refer [c-for]]
     [think.image.pixel :as think-pixel]
     [think.image.core :as image]
@@ -205,19 +206,57 @@
       [[  (m/cos a)  (m/sin a)]
        [(-(m/sin a)) (m/cos a)]])))
 
-(defn random-rect-mog [[source-width source-height]
-                       [target-width target-height]    ; [width height]
-                       flip-x
-                       flip-y
-                       lower-scaling-limit    
-                       max-angle]
-  "random rectangle transmogification, aka random-rect-mog.
+(defn assoc-if
+  "Same as assoc, but skip the assoc if v is nil"
+  [m & kvs]
+  (->> kvs
+    (partition 2)
+    (filter second)
+    (map vec)
+    (into m)))
+
+; ----------------------------------------------------------------------------------------------
+; random rectangle transforms
+; ----------------------------------------------------------------------------------------------
+
+(defn rect-tx-target-recipe [[target-width target-height]  
+                              flip-x
+                              flip-y
+                              lower-scaling-limit    
+                              max-angle]
+  "create a recipe struct to pass to random-rect-tx, or save for later. 
+  use rect-tx-recipe to fill this out before passing to random-rect-tx"
+  { :target-dims [target-width target-height]    
+    :flip-x flip-x
+    :flip-y flip-y
+    :lower-scaling-limit lower-scaling-limit    
+    :max-angle max-angle })
+
+(defn rect-tx-recipe 
+  "combine the target recipe with source image dims and optional source image filename."
+  ([target-recipe
+    [source-width source-height]
+    source-filename]
+   (assoc-if target-recipe  :source-dims [source-width source-height]
+                           :source-filename source-filename))
+  ([target-recipe
+    [source-width source-height]]
+    (rect-tx-recipe target-recipe [source-width source-height] nil)))
+
+(defn random-rect-tx [{:keys [source-filename
+                              source-dims 
+                              target-dims 
+                              flip-x 
+                              flip-y 
+                              lower-scaling-limit 
+                              max-angle]}]
+  "random rectangle transformation, aka random-rect-tx.
   Generate a specification for creating a target image from a rectangle within a source image.  
   The rectangle in the source is positioned by a random rotation, translation, scaling, and 
   x/y flip.  
   Parameters:
-  [source-width source-height] : dimensions of the source image.
-  [target-width target-height] : dimensions of the target image.
+  source-dims: [source-width source-height] - dimensions of the source image.
+  target-dims: [target-width target-height] - dimensions of the target image.
   flip-x : if true, 50% chance of an x-flip.
   flip-y : if true, 50% chance of a y-flip.
   lower-scaling-limit : This is a ratio of source rect size to target rect size. 
@@ -231,7 +270,9 @@
              for example:  0.0 means no rotation allowed.
                            1.0 means any angle is allowed.
                            0.25 means up to +-90 degrees of rotation."
-  (let [angle (* 2.0 (- (rand) 0.5) max-angle)    ;  in 'turns'
+  (let [[source-width source-height] source-dims
+        [target-width target-height] target-dims
+        angle (* 2.0 (- (rand) 0.5) max-angle)    ;  in 'turns'
         ; construct corner points of the rotated rectangle.
         rm (rot angle)
         rx (m/mmul rm [target-width 0])
@@ -281,17 +322,18 @@
                       [[x3 x2 x1 x0] [y3 y2 y1 y0]])
                     [xes yes])
         ]
-    { :translate1 [minx miny]       ; pre-scaling translation
-      :translate2 [(- xt) (- yt)]   ; post-scaling translation
-      :angle angle                  ; rotation in turns
-      :scale scale-factor           ; ratio of (source rect size) over (target rect size)
-      :target-dims [target-width target-height]
-      :source-dims [source-width source-height]
-      :xflip xflip                  ; whether to flip the image in x (map c+x to c-x, where c is the image center)
-      :yflip yflip                  ; whether to flip the image in y 
-      :corners (map list xes yes) }))  ; corners of the source rectangle, for sanity checking.
+    (assoc-if { :translate1 [minx miny]       ; pre-scaling translation
+                :translate2 [(- xt) (- yt)]   ; post-scaling translation
+                :angle angle                  ; rotation in turns
+                :scale scale-factor           ; ratio of (source rect size) over (target rect size)
+                :source-dims [source-width source-height]
+                :target-dims [target-width target-height]
+                :xflip xflip                  ; whether to flip the image in x (map c+x to c-x, where c is the image center)
+                :yflip yflip                  ; whether to flip the image in y 
+                :corners (map list xes yes) } ; corners of the source rectangle, for sanity checking.
+          :source-filename source-filename))) ; add in the source-filename if its not nil.
 
-(defn rect-mog->affinetransform ^AffineTransform [{:keys [translate1 translate2 xflip yflip angle scale target-dims]}]
+(defn rect-tx->affinetransform ^AffineTransform [{:keys [translate1 translate2 xflip yflip angle scale target-dims]}]
   (let [scale (/ 1.0 scale)
         [width height] target-dims
         [xt1 yt1] translate1 
@@ -321,16 +363,24 @@
     (.transform tx from to)
     [(.getX to) (.getY to)]))
 
-(defn rect-mog-image [^BufferedImage img 
-                     {:keys [target-dims] :as mog}]
-  "given a source image and a 'rect-mog', return a new image according to the 
-  rect-mog parameters, with width and height as in :target-dims. "
-  (let [[width height] target-dims
-        tx (rect-mog->affinetransform mog)
-        out-image (i/new-image width height)
-        op (AffineTransformOp. tx AffineTransformOp/TYPE_BICUBIC)]
-    (.filter op img out-image)
-    out-image))
+(defn rect-tx-image  
+  "given a source image and a 'rect-tx', return a new image according to the 
+  rect-tx parameters, with width and height as in :target-dims.
+  optional is the affinetransform interpolation type.  Use TYPE_NEAREST_NEIGHBOR 
+  for masks, where you don't want interpolated colors."
+  
+  (^BufferedImage [^BufferedImage img 
+                  {:keys [target-dims] :as tx}
+                  ato]   ; AffineTransformOp/TYPE_BICUBIC, TYPE_BILINEAR, or TYPE_NEAREST_NEIGHBOR
+    (let [[width height] target-dims
+          tx (rect-tx->affinetransform tx)
+          out-image (i/new-image width height)
+          op (AffineTransformOp. tx AffineTransformOp/TYPE_BICUBIC)]
+      (.filter op img out-image)
+      out-image))
+ (^BufferedImage [^BufferedImage img 
+                 tx]
+   (rect-tx-image img tx AffineTransformOp/TYPE_BICUBIC)))
 
 (defn draw-point-lines [^BufferedImage img 
                          points
@@ -347,40 +397,114 @@
            p+1))))
 
 ; ----------------------------------------------------------------------------------
-; some handy functions for verifying visually that the rect-mog is working, or if 
+; some handy functions for verifying visually that the rect-tx is working, or if 
 ; not, how it isn't working.
 ; ----------------------------------------------------------------------------------
 
-(defn draw-mogrify-box [^BufferedImage img 
-                        {:keys [corners] :as mog}
+(defn draw-tx-box [^BufferedImage img 
+                        {:keys [corners] :as tx}
                         color]
   (draw-point-lines img corners color))
 
 (defn test-image [filename [target-width target-height]]
   (let [img (i/load-image filename)
-        mp (random-rect-mog [(.getWidth img) (.getHeight img)] [target-width target-height] true true 1.0 0.25)
-        tx (rect-mog->affinetransform mp)
-        out (rect-mog-image img mp)
+        mp (random-rect-tx [(.getWidth img) (.getHeight img)] [target-width target-height] true true 1.0 0.25)
+        tx (rect-tx->affinetransform mp)
+        out (rect-tx-image img mp)
         orig-pts [[0 0] [0 target-height] [target-width target-height] [target-width 0]]
         inv-tx (.createInverse tx)
         inv-pts (map (partial xform-point inv-tx) orig-pts)
         ]
     (i/write out (str filename ".out.png") "png")
-    (draw-mogrify-box img mp Color/BLACK)
+    (draw-tx-box img mp Color/BLACK)
     (draw-point-lines img inv-pts Color/RED)
     (i/write img (str filename ".box.png") "png")
     mp))
 
 (defn test-image-nx [filename [target-width target-height] n] 
   (let [img (i/load-image filename)
-        mpis (map (fn [i] [(random-rect-mog [(.getWidth img) (.getHeight img)] [target-width target-height] true true 0.3 0.1)
+        mpis (map (fn [i] [(random-rect-tx [(.getWidth img) (.getHeight img)] [target-width target-height] true true 0.3 0.1)
                           i])
                  (take n (iterate inc 0)))]
     (doall
       (map (fn [[mp i]]
-             (i/write (rect-mog-image img mp) (str filename i ".out.png") "png"))
+             (i/write (rect-tx-image img mp) (str filename i ".out.png") "png"))
            mpis)) 
     mpis
     ))
+
+; ----------------------------------------------------------------------------------
+; random image-and-mask rects.   
+; given a directory of images (and masks), generate a series of rect-tx structs, each associated 
+; with a specific image.  
+; the images may be of varying resolutions, so source resolution is left out of the 
+; rect-tx-recipe.  
+; ----------------------------------------------------------------------------------
+
+(defn load-image-w-helpful-exception ^BufferedImage [file]
+  (try
+    (i/load-image file)
+    (catch Exception e 
+      (println "exception opening file: " file)
+      (println "msg: " (.getMessage e)))))
+
+(defn rect-tx-w-mask [^BufferedImage image 
+                      ^BufferedImage mask 
+                      mask-color->category-index
+                      {:keys [target-dims] :as rect-tx }]
+  (let [image-patch (rect-tx-image image rect-tx)
+        [target-width target-height] target-dims
+        ; nearest neighbor interpolation so that we don't get invalid mask colors. 
+        mask-patch (rect-tx-image mask rect-tx AffineTransformOp/TYPE_NEAREST_NEIGHBOR)
+        [mask-width mask-height] [(.getWidth mask-patch) (.getHeight mask-patch)]
+        labels (m/new-matrix :vectorz mask-height mask-width)]
+    (doall 
+      (for [x (range 0 mask-width) 
+            y (range 0 mask-height)]
+        (m/mset! labels y x (mask-color->category-index (c/components-rgb (.getRGB mask-patch x y))))))
+    {:labels labels 
+     :final-img image-patch
+     :rect-tx rect-tx }))
+
+
+(defn make-rect-tx-observation-ftn [image-dir mask-dir mask-color->category-index rect-tx-target-recipe]
+  "Return a function that, when called, will produce a randomized image, mask, and rect-tx
+  from the directories.  The rect-tx can be used to reproduce the image and mask at a later point.
+  image-dir: the directory containing image files.
+  mask-dir:  the directory containing mask files with names <imagefilename>-mask.png
+  color-categories: a map from colors to category numbers.  every pixel in the mask images should have a color in this map.
+  rect-tx-recipe: struct of args for random-rect-tx ftn. "
+  (let [image-files (vec (rest (file-seq (clojure.java.io/file image-dir))))  ; skip the first file, which is the directory name.
+        image-count (count image-files)]
+    (fn []
+      (let [^java.io.File image-file (get image-files (int (* (rand) (- image-count 1))))
+            ^java.io.File mask-file (clojure.java.io/file mask-dir (str (.getName image-file) "-mask.png"))
+            image (load-image-w-helpful-exception image-file)
+            mask (load-image-w-helpful-exception mask-file)
+            [source-width source-height] [(.getWidth image) (.getHeight image)]
+            rect-tx-recipe (rect-tx-recipe rect-tx-target-recipe [source-width source-height] (.getName image-file))
+            rect-tx (random-rect-tx rect-tx-recipe)
+            ]
+        (rect-tx-w-mask image mask mask-color->category-index rect-tx)))))
+
+
+(defn replay-rtx-w-mask [image-dir mask-dir mask-color->category-index rect-tx]
+  (let [{:keys [source-filename
+                source-dims 
+                target-dims 
+                flip-x 
+                flip-y 
+                lower-scaling-limit 
+                max-angle]} rect-tx
+        ^java.io.File image-file (clojure.java.io/file image-dir source-filename)
+        ^java.io.File mask-file (clojure.java.io/file mask-dir (str source-filename "-mask.png"))
+        image (load-image-w-helpful-exception image-file)
+        mask (load-image-w-helpful-exception mask-file)
+        image-dims [(.getWidth image) (.getHeight image)]]
+    (if (not= source-dims image-dims)
+      { :fail "image dimensions don't match!" } 
+      (rect-tx-w-mask image mask mask-color->category-index rect-tx))))
+
+                                         
 
 

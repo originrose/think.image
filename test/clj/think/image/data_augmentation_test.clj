@@ -1,6 +1,8 @@
 (ns think.image.data-augmentation-test
-  (:require [think.image.data-augmentation :refer [rect-mog->affinetransform 
-                                                   random-rect-mog 
+  (:require [think.image.data-augmentation :refer [rect-tx->affinetransform 
+                                                   random-rect-tx 
+                                                   rect-tx-target-recipe
+                                                   rect-tx-recipe
                                                    xform-point
                                                    random]]
             [clojure.pprint :as pp]
@@ -22,8 +24,8 @@
          (<= y1 y)
          (<= y y2))))
 
-(defn test-mog-pts [m]
-  (let [tx (rect-mog->affinetransform m)
+(defn test-rtx-pts [m]
+  (let [tx (rect-tx->affinetransform m)
         itx (.createInverse tx)
         [sw sh] (:source-dims m)
         tpoints (apply corner-points (:target-dims m))
@@ -39,17 +41,20 @@
     (is (every? identity (map dbleq (apply concat (:corners m)) (apply concat invpoints)))
         (str "failure 'B' comparing points: " (:corners m) " and " (pr-str invpoints)))))
 
-(defn test-many-mogs [n]
-  (let [mogs (map (fn [_] (random-rect-mog [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]
-                                            [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]
-                                            true
-                                            true
-                                            (random 0.1 100.0)
-                                            1.0))
-                   (repeat n 0))]
-    (doall (map test-mog-pts mogs))))
+(defn test-many-rtxs [n]
+  (let [txs (map (fn [_] (random-rect-tx 
+                           (rect-tx-recipe 
+                             (rect-tx-target-recipe
+                                     [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]
+                                     true
+                                     true
+                                     (random 0.1 100.0)
+                                     1.0)
+                             [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]))) 
+                 (repeat n 0))]
+    (doall (map test-rtx-pts txs))))
 
-(deftest rect-mog-sanity-check []
-  (test-many-mogs 1000))
+(deftest rect-tx-sanity-check []
+  (test-many-rtxs 1000))
 
 
