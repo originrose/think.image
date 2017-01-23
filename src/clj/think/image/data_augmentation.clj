@@ -219,29 +219,34 @@
 ; random rectangle transforms
 ; ----------------------------------------------------------------------------------------------
 
-(defn rect-tx-target-recipe [[target-width target-height]  
-                              flip-x
-                              flip-y
-                              lower-scaling-limit    
-                              max-angle]
-  "create a recipe struct to pass to random-rect-tx, or save for later. 
-  use rect-tx-recipe to fill this out before passing to random-rect-tx"
-  { :target-dims [target-width target-height]    
+(defn rect-tx-recipe [& {:keys [source-filename
+                                source-dims
+                                target-dims
+                                flip-x
+                                flip-y
+                                lower-scaling-limit
+                                max-angle]
+                         :or { source-filename nil
+                               source-dims nil }}]
+  "build a rect-tx-recipe for use with random-rect-tx.
+  source-dims are required, but its handy to build a recipe without these
+  if you won't know the source resolution/filename until later."
+  { :source-dims source-dims  ; [width height] 
+    :source-filename source-filename 
+    :target-dims target-dims  ; [width height]
     :flip-x flip-x
     :flip-y flip-y
     :lower-scaling-limit lower-scaling-limit    
     :max-angle max-angle })
 
-(defn rect-tx-recipe 
-  "combine the target recipe with source image dims and optional source image filename."
-  ([target-recipe
-    [source-width source-height]
-    source-filename]
-   (assoc-if target-recipe  :source-dims [source-width source-height]
-                           :source-filename source-filename))
-  ([target-recipe
-    [source-width source-height]]
-    (rect-tx-recipe target-recipe [source-width source-height] nil)))
+(defn add-rect-tx-source-info [rect-tx
+                               [source-width source-height]              
+                               & {:keys [source-filename] :or { :source-filename nil }}]
+  "add the source image info - resolution and optional filename."
+  (assoc-if rect-tx :source-dims [source-width source-height]              
+                    :source-filename source-filename))
+
+
 
 (defn random-rect-tx [{:keys [source-filename
                               source-dims 
@@ -481,7 +486,7 @@
             image (load-image-w-helpful-exception image-file)
             mask (load-image-w-helpful-exception mask-file)
             [source-width source-height] [(.getWidth image) (.getHeight image)]
-            rect-tx-recipe (rect-tx-recipe rect-tx-target-recipe [source-width source-height] (.getName image-file))
+            rect-tx-recipe (add-rect-tx-source-info rect-tx-target-recipe [source-width source-height] :source-filename (.getName image-file))
             rect-tx (random-rect-tx rect-tx-recipe)
             ]
         (rect-tx-w-mask image mask mask-color->category-index rect-tx)))))

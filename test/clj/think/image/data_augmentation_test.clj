@@ -1,7 +1,6 @@
 (ns think.image.data-augmentation-test
   (:require [think.image.data-augmentation :refer [rect-tx->affinetransform 
                                                    random-rect-tx 
-                                                   rect-tx-target-recipe
                                                    rect-tx-recipe
                                                    xform-point
                                                    random]]
@@ -43,14 +42,12 @@
 
 (defn test-many-rtxs [n]
   (let [txs (map (fn [_] (random-rect-tx 
-                           (rect-tx-recipe 
-                             (rect-tx-target-recipe
-                                     [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]
-                                     true
-                                     true
-                                     (random 0.1 100.0)
-                                     1.0)
-                             [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]))) 
+                           (rect-tx-recipe :source-dims [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]
+                                           :target-dims [(Math/floor (random 10 4000)) (Math/floor (random 10 4000))]
+                                           :flip-x true
+                                           :flip-y true
+                                           :lower-scaling-limit (random 0.1 100.0)
+                                           :max-angle 1.0)))
                  (repeat n 0))]
     (doall (map test-rtx-pts txs))))
 
