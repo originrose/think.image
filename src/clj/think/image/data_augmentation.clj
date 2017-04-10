@@ -369,6 +369,10 @@
 
 
 (defn affine-scale
+  "Interpolation is one of:
+  :bicubic
+  :bilinear
+  :nearest-neighbor."
   ^BufferedImage [^BufferedImage src scale-x scale-y & {:keys [interpolation]}]
   (let [tx (AffineTransform.)
         src-width (think-image/width src)
