@@ -1,12 +1,13 @@
 (ns think.image.data-augmentation-test
-  (:require [think.image.data-augmentation :refer [rect-tx->affinetransform 
-                                                   random-rect-tx 
+  (:require [think.image.data-augmentation :refer [rect-tx->affinetransform
+                                                   random-rect-tx
                                                    rect-tx-recipe
                                                    xform-point
                                                    random]]
-            [clojure.pprint :as pp]
+            [think.image.configured-augmentation :refer [preprocess]]
             [clojure.test :refer :all]
-            ))
+            [clojure.java.io :as io]
+            [mikera.image.core :as i]))
 
 (defn- corner-points [w h]
   [[0 0] [w 0] [w h] [0 h]])
@@ -54,4 +55,18 @@
 (deftest rect-tx-sanity-check []
   (test-many-rtxs 1000))
 
-
+(deftest test-preprocess
+  "Test the preprocess function on default configuration."
+  []
+  (let [image "test/data/checkerboard.png"
+        processed-true "test/data/test-output/preprocess-true.png"
+        processed-false "test/data/test-output/preprocess-false.png"]
+    ; remove files created last time test was run.
+    (io/make-parents processed-true)
+    ; create new images
+    (-> (preprocess image true) (i/save processed-true))
+    (-> (preprocess image false) (i/save processed-false))
+    ;; If there are errors i/save will throw.
+    ;; Due to the random nature of preprocessing nothing specific about output can be tested,
+    ;; though it is worth looking at the images.
+    (is true)))
