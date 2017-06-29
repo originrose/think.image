@@ -14,19 +14,20 @@
 
 
 (def default-config ^{:private true}
-{:horizontal-flip true
- :vertical-flip   false
- :crop-location   :centered
- :crop-x      0.85
- :crop-y     0.85
- :max-zoom 1.2
- :min-zoom 0.9
- :rotation-range 15
- :shear-x 0.15
- :shear-y 0.15
- :warp-range 0.15
- :output-width 44
- :output-height 44})
+{:horizontal-flip true      ; result: image will, with 50% probability, be flipped left-to-right
+ :vertical-flip   false     ; result: image will, with 50% probability, be flipped upside-down
+ :crop-location :centered   ; result: image crop occurs at center.  Other option is cropping at a random location.
+ :crop-x 0.85               ; result: image will be cropped to 85% of its width. Some cropping is good because a 20% border is added to images to avoid cutoff of rotated portions of image.
+ :crop-y 0.85               ; result: image will be cropped to 85% of its height. Some cropping is good because a 20% border is added to images to avoid cutoff of rotated portions of image.
+ :max-zoom 1.2              ; result: image will be scaled up randomly, at most to 120% of original size
+ :min-zoom 0.9              ; result: image will be scaled down randomly, at most to 90% of original size
+ :rotation-range 15         ; result: image will be randomly rotated up to 15 degrees left or right
+ :shear-x 0.15              ; result: image will be randomly sheared x-wise in the range [-0.15, 0.15]
+ :shear-y 0.15              ; result: image will be randomly sheared x-wise in the range [-0.15, 0.15]
+ :warp-range 0.15           ; result: see the (warp) function below
+ :output-width 44           ; result: final image width will be 44
+ :output-height 44          ; result: final image height will be 44
+ })
 
 (def config*
   "This is the global source of truth for all configuration."
