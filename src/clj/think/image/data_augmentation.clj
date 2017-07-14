@@ -241,7 +241,7 @@
 
 (defn add-rect-tx-source-info [rect-tx
                                [source-width source-height]
-                               & {:keys [source-filename] :or { :source-filename nil }}]
+                               & {:keys [source-filename] :or {source-filename nil }}]
   "add the source image info - resolution and optional filename."
   (assoc-if rect-tx :source-dims [source-width source-height]
                     :source-filename source-filename))
