@@ -9,7 +9,8 @@
             [think.image.pixel :as pixel]
             [think.image.image-util :as iu]
             [clojure.core.matrix.macros :refer [c-for]]
-            [clojure.core.matrix :as m])
+            [clojure.core.matrix :as m]
+            [clojure.core.matrix.stats :as m-stats])
   (:import [java.awt.image BufferedImage]
            [java.awt Rectangle]))
 
@@ -79,3 +80,13 @@
              (image/height img-2)))
       ;;If nothing got thrown we are probably good.
       )))
+
+
+(deftest patch-mean-subtract
+  (let [test-img (circular-image)
+        obs-2 (p/image->patch test-img :colorspace :rgb :normalize false)
+        means (mapv m-stats/mean obs-2)
+        obs-3 (apply p/patch-mean-subtract obs-2 means)
+        sub-means (mapv m-stats/mean obs-3)]
+    (is (not= 0.0 (double (first means))))
+    (is (m/equals [0 0 0] sub-means))))

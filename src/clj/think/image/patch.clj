@@ -8,7 +8,8 @@
             [clojure.core.matrix :as mat]
             [clojure.core.matrix.macros :refer [c-for]]
             [think.datatype.core :as dtype]
-            [clojure.pprint :as pp])
+            [clojure.pprint :as pp]
+            [think.datatype.marshal :as dtype-marshal])
   (:import [java.awt.image BufferedImage]
            [java.awt Rectangle]
            [java.util Arrays]
@@ -86,7 +87,7 @@
 
 (defn generate-n-filtered-rects
   "Generate max-src-rect-count random sub-rects, filter by a given
-filter function.  Return rect-count of those."
+  filter function.  Return rect-count of those."
   [rect-filter-fn content-rect rect-count rect-dim
    & {:keys [max-src-rect-count]
       :or {max-src-rect-count 500}}]
@@ -95,35 +96,75 @@ filter function.  Return rect-count of those."
        (take rect-count)))
 
 
-
 (defmacro image->patch-impl
-  [data-array num-pixels cast-fn array-fn]
+  [data-array num-pixels cast-fn array-fn normalize?]
   `(let [retval-r# (~array-fn ~num-pixels)
          retval-g# (~array-fn ~num-pixels)
          retval-b# (~array-fn ~num-pixels)]
      (c-for
-      [idx# 0 (< idx# ~num-pixels) (inc idx#)]
-      (pixel/with-unpacked-pixel (aget ~data-array idx#)
-        (aset retval-r# idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
-        (aset retval-g# idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
-        (aset retval-b# idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5)))))
+       [idx# 0 (< idx# ~num-pixels) (inc idx#)]
+       (pixel/with-unpacked-pixel (aget ~data-array idx#)
+         (if ~normalize?
+           (do
+             (aset retval-r# idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
+             (aset retval-g# idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
+             (aset retval-b# idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5))))
+           (do
+             (aset retval-r# idx# (~cast-fn ~'r))
+             (aset retval-g# idx# (~cast-fn ~'g))
+             (aset retval-b# idx# (~cast-fn ~'b))))))
      [retval-r# retval-g# retval-b#]))
 
 
 (defn image->patch
-  "Turns BufferedImage img into an array suitable for cortex input."
-  [^BufferedImage img & {:keys [rect datatype colorspace data-array]
-                         :or {datatype :double colorspace :rgb}}]
+  "By default, turns BufferedImage img into an array suitable for cortex input.
+  If :normalize set to false, returns RGB array of pixel values."
+  [^BufferedImage img & {:keys [rect datatype colorspace data-array normalize]
+                         :or {datatype :double colorspace :rgb normalize true}}]
   (let [^Rectangle rect (or rect (image-util/image->rect img))
         retval-num-pixels (* (.width rect) (.height rect))
         ^ints data-array (or data-array (int-array retval-num-pixels))
         _ (image/->array img rect data-array)
         retval (condp = datatype
-                 :double (image->patch-impl data-array retval-num-pixels double double-array)
-                 :float (image->patch-impl data-array retval-num-pixels float float-array))]
+                 :double (image->patch-impl data-array retval-num-pixels double double-array normalize)
+                 :float (image->patch-impl data-array retval-num-pixels float float-array normalize))]
     (condp = colorspace
       :rgb retval
       :gray [(first retval)])))
+
+
+(defmacro ^:private patch-mean-sub-impl
+  [datatype]
+  (let [ary-fn (condp = datatype
+                 :double 'dtype-marshal/as-double-array
+                 :float 'dtype-marshal/as-float-array)]
+    `(fn [patch# r-mean# g-mean# b-mean#]
+       (let [[rd# gd# bd#] patch#
+             r# (~ary-fn rd#)
+             g# (~ary-fn gd#)
+             b# (~ary-fn bd#)
+             n-elems# (alength r#)]
+         (c-for [idx# 0 (< idx# n-elems#) (inc idx#)]
+                (aset r# idx# (- (aget r# idx#) r-mean#))
+                (aset g# idx# (- (aget g# idx#) g-mean#))
+                (aset b# idx# (- (aget b# idx#) b-mean#))))
+       patch#)))
+
+
+(def ^:private patch-mean-sub-table
+  {:double (patch-mean-sub-impl :double)
+   :float (patch-mean-sub-impl :float)})
+
+
+(defn patch-mean-subtract
+  "Subtracts means of global images from each channel and optionally reorders RGB->BGR.
+  Use for ResNet image preprocessing."
+  [patch r-mean g-mean b-mean & {:keys [bgr-reorder]}]
+  (let [[r g b] ((get patch-mean-sub-table (dtype/get-datatype (first patch)))
+                 patch r-mean g-mean b-mean)]
+    (if bgr-reorder
+      [b g r]
+      [r g b])))
 
 
 (defn patch->image
@@ -149,7 +190,6 @@ filter function.  Return rect-count of those."
                    (unchecked-byte (* 255.0 (+ (double (dtype/get-value b-data idx)) 0.5))))))
     (image/array-> retval byte-data)
     retval))
-
 
 
 (defn masked-image->patches
