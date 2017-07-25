@@ -86,7 +86,7 @@
 
 (defn generate-n-filtered-rects
   "Generate max-src-rect-count random sub-rects, filter by a given
-filter function.  Return rect-count of those."
+  filter function.  Return rect-count of those."
   [rect-filter-fn content-rect rect-count rect-dim
    & {:keys [max-src-rect-count]
       :or {max-src-rect-count 500}}]
@@ -95,35 +95,56 @@ filter function.  Return rect-count of those."
        (take rect-count)))
 
 
-
 (defmacro image->patch-impl
-  [data-array num-pixels cast-fn array-fn]
+  [data-array num-pixels cast-fn array-fn normalize?]
   `(let [retval-r# (~array-fn ~num-pixels)
          retval-g# (~array-fn ~num-pixels)
          retval-b# (~array-fn ~num-pixels)]
      (c-for
-      [idx# 0 (< idx# ~num-pixels) (inc idx#)]
-      (pixel/with-unpacked-pixel (aget ~data-array idx#)
-        (aset retval-r# idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
-        (aset retval-g# idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
-        (aset retval-b# idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5)))))
+       [idx# 0 (< idx# ~num-pixels) (inc idx#)]
+       (pixel/with-unpacked-pixel (aget ~data-array idx#)
+         (if ~normalize?
+           (do
+             (aset retval-r# idx# (~cast-fn (- (/ (int ~'r) 255.0) 0.5)))
+             (aset retval-g# idx# (~cast-fn (- (/ (int ~'g) 255.0) 0.5)))
+             (aset retval-b# idx# (~cast-fn (- (/ (int ~'b) 255.0) 0.5))))
+           (do
+             (aset retval-r# idx# (~cast-fn ~'r))
+             (aset retval-g# idx# (~cast-fn ~'g))
+             (aset retval-b# idx# (~cast-fn ~'b))))))
      [retval-r# retval-g# retval-b#]))
 
 
 (defn image->patch
-  "Turns BufferedImage img into an array suitable for cortex input."
-  [^BufferedImage img & {:keys [rect datatype colorspace data-array]
-                         :or {datatype :double colorspace :rgb}}]
+  "By default, turns BufferedImage img into an array suitable for cortex input.
+  If :normalize set to false, returns RGB array of pixel values."
+  [^BufferedImage img & {:keys [rect datatype colorspace data-array normalize]
+                         :or {datatype :double colorspace :rgb normalize true}}]
   (let [^Rectangle rect (or rect (image-util/image->rect img))
         retval-num-pixels (* (.width rect) (.height rect))
         ^ints data-array (or data-array (int-array retval-num-pixels))
         _ (image/->array img rect data-array)
         retval (condp = datatype
-                 :double (image->patch-impl data-array retval-num-pixels double double-array)
-                 :float (image->patch-impl data-array retval-num-pixels float float-array))]
+                 :double (image->patch-impl data-array retval-num-pixels double double-array normalize)
+                 :float (image->patch-impl data-array retval-num-pixels float float-array normalize))]
     (condp = colorspace
       :rgb retval
       :gray [(first retval)])))
+
+
+(defn patch-mean-subtract
+  "Subtracts means of global images from each channel and optionally reorders RGB->BGR.
+  Use for ResNet image preprocessing."
+  [patch r-mean g-mean b-mean & {:keys [datatype bgr-reorder]
+                                 :or {datatype :double bgr-reorder true}}]
+  (let [patch-pairs (map vector patch [r-mean g-mean b-mean])
+        centered-patch (map (fn [channel]
+                              (map #(- % (second channel)) (first channel))) patch-pairs)
+        array-fn (condp = datatype :double double-array :float float-array)]
+    (if bgr-reorder
+      (->> (reverse centered-patch)
+           (mapv #(array-fn %)))
+      (mapv #(array-fn %) centered-patch))))
 
 
 (defn patch->image
