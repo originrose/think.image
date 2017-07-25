@@ -8,7 +8,8 @@
             [clojure.core.matrix :as mat]
             [clojure.core.matrix.macros :refer [c-for]]
             [think.datatype.core :as dtype]
-            [clojure.pprint :as pp])
+            [clojure.pprint :as pp]
+            [think.datatype.marshal :as dtype-marshal])
   (:import [java.awt.image BufferedImage]
            [java.awt Rectangle]
            [java.util Arrays]
@@ -132,19 +133,38 @@
       :gray [(first retval)])))
 
 
+(defmacro ^:private patch-mean-sub-impl
+  [datatype]
+  (let [ary-fn (condp = datatype
+                 :double 'dtype-marshal/as-double-array
+                 :float 'dtype-marshal/as-float-array)]
+    `(fn [patch# r-mean# g-mean# b-mean#]
+       (let [[rd# gd# bd#] patch#
+             r# (~ary-fn rd#)
+             g# (~ary-fn gd#)
+             b# (~ary-fn bd#)
+             n-elems# (alength r#)]
+         (c-for [idx# 0 (< idx# n-elems#) (inc idx#)]
+                (aset r# idx# (- (aget r# idx#) r-mean#))
+                (aset g# idx# (- (aget g# idx#) g-mean#))
+                (aset b# idx# (- (aget b# idx#) b-mean#))))
+       patch#)))
+
+
+(def ^:private patch-mean-sub-table
+  {:double (patch-mean-sub-impl :double)
+   :float (patch-mean-sub-impl :float)})
+
+
 (defn patch-mean-subtract
   "Subtracts means of global images from each channel and optionally reorders RGB->BGR.
   Use for ResNet image preprocessing."
-  [patch r-mean g-mean b-mean & {:keys [datatype bgr-reorder]
-                                 :or {datatype :double bgr-reorder true}}]
-  (let [patch-pairs (map vector patch [r-mean g-mean b-mean])
-        centered-patch (map (fn [channel]
-                              (map #(- % (second channel)) (first channel))) patch-pairs)
-        array-fn (condp = datatype :double double-array :float float-array)]
+  [patch r-mean g-mean b-mean & {:keys [bgr-reorder]}]
+  (let [[r g b] ((get patch-mean-sub-table (dtype/get-datatype (first patch)))
+                 patch r-mean g-mean b-mean)]
     (if bgr-reorder
-      (->> (reverse centered-patch)
-           (mapv #(array-fn %)))
-      (mapv #(array-fn %) centered-patch))))
+      [b g r]
+      [r g b])))
 
 
 (defn patch->image
@@ -170,7 +190,6 @@
                    (unchecked-byte (* 255.0 (+ (double (dtype/get-value b-data idx)) 0.5))))))
     (image/array-> retval byte-data)
     retval))
-
 
 
 (defn masked-image->patches
