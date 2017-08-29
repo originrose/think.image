@@ -1,10 +1,10 @@
-(defproject thinktopic/think.image "0.4.14-SNAPSHOT"
+(defproject thinktopic/think.image "0.4.14"
   :description "Image manipulation library"
   :url "http://github.com/thinktopic/think.image"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
-                 [thinktopic/think.datatype "0.3.15"]
+                 [thinktopic/think.datatype "0.3.16"]
                  [net.mikera/imagez "0.12.0"]]
 
   :source-paths ["src/clj" "src/cljc"]
