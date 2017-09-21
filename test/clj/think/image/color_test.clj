@@ -1,5 +1,5 @@
 (ns think.image.color-test
-  (:require [think.image.color :refer [ciedist94]] 
+  (:require [think.image.color :refer [ciedist94 hsv->rgb rgb->hsv]] 
             [clojure.test :refer :all]
             ))
 
@@ -43,3 +43,18 @@
   (testing "compare ciedist94 results to known good data"
     (is (ciedist94test))))
 
+(deftest hsvtest 
+  (let [testcolor (fn [[r g b]]
+                    (is (= [r g b]
+                           (map long (hsv->rgb (rgb->hsv [r g b]))))))
+        testcolors [[0 0 0]
+                    [1 1 1]
+                    [127 127 127]
+                    [255 255 255]
+                    [0 255 0]
+                    [255 0 255]
+                    [0 127 0]
+                    [127 0 127]]]
+    (doseq [color testcolors]
+      (testcolor color))))
+                    
