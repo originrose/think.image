@@ -1,0 +1,7 @@
+{:system {:plugins [[lein-localrepo "0.5.4"]]}
+  :user {
+        :dependencies [
+                 [thinktopic/opencv-java "3.3.0"]
+                 [thinktopic/opencv-java-native "3.3.0"]]
+        }}
+
