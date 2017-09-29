@@ -4,13 +4,13 @@
 
 If you want to quickly do useful things involving Clojure, Cortex and OpenCV, this is your best bet, especially if you have plans to have an easy transition from your dev workflow to production.
 
-This directory contains everything needed to build thinktopic/opencv-cortex, an image based on [`thinktopic/cortex-base`](https://github.com/thinktopic/cortex/blob/master/scripts/Dockerfile.cortex-base).
+This directory contains everything needed to build `thinktopic/opencv-cortex`, an image based on [`thinktopic/cortex-base`](https://github.com/thinktopic/cortex/blob/master/scripts/Dockerfile.cortex-base).
 
 ## Features
 
 *  OpenCV 3.3.0, compiled with ffmpeg, Java bindings and most optional dependencies.
 *  The same Ubuntu / CUDA / Cortex setup as a lot of our machine learning projects
-*  Can run it in any lein project, and it'll spin up a REPL with access to your repo's dir, with OpenCV support that works without needing to change any of your dependencies, etc.
+*  Can run it in any lein project, and it'll spin up a REPL (using *your* `project.clj`) with access to your repo's dir, with OpenCV support that works without needing to change any of your dependencies, etc.
 *  Runs as your current user, not root, so you don't end up with bizarre issues with files in your repo that you can't modify
 *  Keeps a cache of its own maven dependencies in the app dir, so it doesn't interfere with your own ~/.m2
 *  By default it starts a REPL for your project, bound locally on a fixed port
